@@ -16,7 +16,6 @@
   <title>Finanças</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
-  <script src="/_sdk/element_sdk.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
@@ -237,6 +236,10 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+db.settings({
+  experimentalForceLongPolling: true,
+  useFetchStreams: false
+});
 const entriesCollection = db.collection('lancamentos');
 
 function fmt(v) { return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
@@ -252,6 +255,59 @@ function sanitizeEntry(data) {
     observacoes: (data.observacoes || '').trim(),
     createdAt: data.createdAt || new Date().toISOString()
   };
+}
+
+function normalizeDateValue(value) {
+  if (!value) return new Date().toISOString().split('T')[0];
+  if (typeof value === 'string') return value;
+  if (value && typeof value.toDate === 'function') {
+    return value.toDate().toISOString().split('T')[0];
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString().split('T')[0] : parsed.toISOString().split('T')[0];
+}
+
+function normalizeCreatedAt(value) {
+  if (!value) return new Date().toISOString();
+  if (typeof value === 'string') return value;
+  if (value && typeof value.toDate === 'function') {
+    return value.toDate().toISOString();
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+function normalizeEntryFromDb(id, data) {
+  return {
+    __backendId: id,
+    tipo: data.tipo === 'receita' ? 'receita' : 'despesa',
+    descricao: (data.descricao || 'Sem descrição').toString(),
+    valor: Number(data.valor) || 0,
+    categoria: (data.categoria || 'Outros').toString(),
+    data: normalizeDateValue(data.data),
+    observacoes: (data.observacoes || '').toString(),
+    createdAt: normalizeCreatedAt(data.createdAt)
+  };
+}
+
+function syncSelectedPeriod() {
+  if (!allData.length) return;
+
+  const hasCurrentPeriodData = allData.some(r => {
+    const d = new Date(r.data);
+    return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+  });
+
+  if (hasCurrentPeriodData) return;
+
+  const latest = [...allData]
+    .map(r => new Date(r.data))
+    .filter(d => !Number.isNaN(d.getTime()))
+    .sort((a, b) => b - a)[0];
+
+  if (!latest) return;
+  selectedYear = latest.getFullYear();
+  selectedMonth = latest.getMonth();
 }
 
 async function createEntry(data) {
@@ -288,9 +344,69 @@ async function deleteEntryFromDb(record) {
   }
 }
 
+function mapSnapshotDocs(snapshot) {
+  return snapshot.docs.map(doc => normalizeEntryFromDb(doc.id, doc.data()));
+}
+
+function parseFirestoreValue(value) {
+  if (!value || typeof value !== 'object') return value;
+  if ('stringValue' in value) return value.stringValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('booleanValue' in value) return Boolean(value.booleanValue);
+  if ('nullValue' in value) return null;
+  return null;
+}
+
+function mapRestDocuments(documents = []) {
+  return documents.map(doc => {
+    const parts = doc.name.split('/');
+    const id = parts[parts.length - 1];
+    const fields = doc.fields || {};
+    const data = Object.fromEntries(
+      Object.entries(fields).map(([key, value]) => [key, parseFirestoreValue(value)])
+    );
+    return normalizeEntryFromDb(id, data);
+  });
+}
+
+async function loadEntriesFromRest() {
+  const baseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/lancamentos?key=${firebaseConfig.apiKey}`;
+  const response = await fetch(baseUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`REST ${response.status}`);
+  }
+  const payload = await response.json();
+  allData = mapRestDocuments(payload.documents || []);
+  syncSelectedPeriod();
+  renderAll();
+  return { isOk: true };
+}
+
+async function loadEntries() {
+  try {
+    const snapshot = await entriesCollection.get();
+    allData = mapSnapshotDocs(snapshot);
+    syncSelectedPeriod();
+    renderAll();
+    return { isOk: true };
+  } catch (error) {
+    console.error('Erro ao carregar dados do Firestore:', error);
+    try {
+      return await loadEntriesFromRest();
+    } catch (restError) {
+      console.error('Erro ao carregar dados pela API REST do Firestore:', restError);
+      showToast('Erro ao buscar dados no Firebase.', 'rose');
+      return { isOk: false, error: restError };
+    }
+  }
+}
+
 function subscribeEntries() {
   return entriesCollection.onSnapshot(snapshot => {
-    allData = snapshot.docs.map(doc => ({ __backendId: doc.id, ...doc.data() }));
+    allData = mapSnapshotDocs(snapshot);
+    syncSelectedPeriod();
     renderAll();
   }, error => {
     console.error('Erro ao sincronizar dados do Firestore:', error);
@@ -707,51 +823,72 @@ function showToast(msg, color='emerald') {
 function showMobileMenu() { document.getElementById('mobile-menu').classList.remove('hidden'); lucide.createIcons(); }
 function closeMobileMenu() { document.getElementById('mobile-menu').classList.add('hidden'); }
 
-// Element SDK
-window.elementSdk.init({
-  defaultConfig,
-  onConfigChange: async (config) => {
-    const title = config.app_title || defaultConfig.app_title;
-    const el1 = document.getElementById('sidebar-title');
-    const el2 = document.getElementById('mobile-title');
-    if (el1) el1.textContent = title;
-    if (el2) el2.textContent = title;
+function applyAppConfig(config = defaultConfig) {
+  const title = config.app_title || defaultConfig.app_title;
+  const el1 = document.getElementById('sidebar-title');
+  const el2 = document.getElementById('mobile-title');
+  if (el1) el1.textContent = title;
+  if (el2) el2.textContent = title;
+  document.title = title;
 
-    const bg = config.background_color || defaultConfig.background_color;
-    const surface = config.surface_color || defaultConfig.surface_color;
-    const textC = config.text_color || defaultConfig.text_color;
-    document.body.style.backgroundColor = bg;
-    document.body.style.color = textC;
+  const bg = config.background_color || defaultConfig.background_color;
+  const textC = config.text_color || defaultConfig.text_color;
+  document.body.style.backgroundColor = bg;
+  document.body.style.color = textC;
 
-    const font = config.font_family || defaultConfig.font_family;
-    document.body.style.fontFamily = `${font}, DM Sans, sans-serif`;
+  const font = config.font_family || defaultConfig.font_family;
+  document.body.style.fontFamily = `${font}, DM Sans, sans-serif`;
 
-    const baseSize = config.font_size || defaultConfig.font_size;
-    document.body.style.fontSize = baseSize + 'px';
-  },
-  mapToCapabilities: (config) => ({
-    recolorables: [
-      { get: () => config.background_color || defaultConfig.background_color, set: v => { config.background_color = v; window.elementSdk.setConfig({background_color:v}); }},
-      { get: () => config.surface_color || defaultConfig.surface_color, set: v => { config.surface_color = v; window.elementSdk.setConfig({surface_color:v}); }},
-      { get: () => config.text_color || defaultConfig.text_color, set: v => { config.text_color = v; window.elementSdk.setConfig({text_color:v}); }},
-      { get: () => config.primary_action_color || defaultConfig.primary_action_color, set: v => { config.primary_action_color = v; window.elementSdk.setConfig({primary_action_color:v}); }},
-      { get: () => config.secondary_action_color || defaultConfig.secondary_action_color, set: v => { config.secondary_action_color = v; window.elementSdk.setConfig({secondary_action_color:v}); }}
-    ],
-    borderables: [],
-    fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: v => { config.font_family = v; window.elementSdk.setConfig({font_family:v}); }},
-    fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: v => { config.font_size = v; window.elementSdk.setConfig({font_size:v}); }}
-  }),
-  mapToEditPanelValues: (config) => new Map([
-    ['app_title', config.app_title || defaultConfig.app_title]
-  ])
-});
+  const baseSize = config.font_size || defaultConfig.font_size;
+  document.body.style.fontSize = baseSize + 'px';
+}
+
+if (window.elementSdk && typeof window.elementSdk.init === 'function') {
+  window.elementSdk.init({
+    defaultConfig,
+    onConfigChange: async (config) => {
+      applyAppConfig(config);
+    },
+    mapToCapabilities: (config) => ({
+      recolorables: [
+        { get: () => config.background_color || defaultConfig.background_color, set: v => { config.background_color = v; window.elementSdk.setConfig({background_color:v}); }},
+        { get: () => config.surface_color || defaultConfig.surface_color, set: v => { config.surface_color = v; window.elementSdk.setConfig({surface_color:v}); }},
+        { get: () => config.text_color || defaultConfig.text_color, set: v => { config.text_color = v; window.elementSdk.setConfig({text_color:v}); }},
+        { get: () => config.primary_action_color || defaultConfig.primary_action_color, set: v => { config.primary_action_color = v; window.elementSdk.setConfig({primary_action_color:v}); }},
+        { get: () => config.secondary_action_color || defaultConfig.secondary_action_color, set: v => { config.secondary_action_color = v; window.elementSdk.setConfig({secondary_action_color:v}); }}
+      ],
+      borderables: [],
+      fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: v => { config.font_family = v; window.elementSdk.setConfig({font_family:v}); }},
+      fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: v => { config.font_size = v; window.elementSdk.setConfig({font_size:v}); }}
+    }),
+    mapToEditPanelValues: (config) => new Map([
+      ['app_title', config.app_title || defaultConfig.app_title]
+    ])
+  });
+} else {
+  applyAppConfig(defaultConfig);
+}
 
 (async () => {
+  renderAll();
+  await loadEntries();
   subscribeEntries();
 })();
 
+const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+  window.addEventListener('load', async () => {
+    if (isLocalHost) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.unregister()));
+      if (window.caches && typeof window.caches.keys === 'function') {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map(key => window.caches.delete(key)));
+      }
+      return;
+    }
+
     navigator.serviceWorker.register('./service-worker.js').catch(error => {
       console.error('Erro ao registrar service worker:', error);
     });
