@@ -784,19 +784,23 @@ function deleteEntry(id) {
 
 async function confirmDelete() {
   if (!deletingRecord) return;
+  const recordToDelete = deletingRecord;
+  const previousData = [...allData];
   const btn = document.getElementById('confirm-delete-btn');
   btn.disabled = true;
   btn.textContent = 'Excluindo...';
-  const result = await deleteEntryFromDb(deletingRecord);
+  updateAllData(allData.filter(item => item.__backendId !== recordToDelete.__backendId));
+  document.getElementById('delete-confirm').classList.add('hidden');
+  deletingRecord = null;
+  const result = await deleteEntryFromDb(recordToDelete);
   btn.disabled = false;
   btn.textContent = 'Excluir';
-  document.getElementById('delete-confirm').classList.add('hidden');
   if (result.isOk) {
     showToast('Lançamento excluído!', 'emerald');
   } else {
+    updateAllData(previousData);
     showToast('Erro ao excluir.', 'rose');
   }
-  deletingRecord = null;
 }
 
 function closeDeleteConfirm() {
