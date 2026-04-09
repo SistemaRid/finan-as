@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="pt-BR" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finanças Pro</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+  <script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['DM Sans', 'sans-serif'],
+        mono: ['Space Mono', 'monospace']
+      }
+    }
+  }
+}
+</script>
+  <style>
+html, body { height: 100%; margin: 0; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0f1117; }
+::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+.glow-green { box-shadow: 0 0 20px rgba(52, 211, 153, 0.15); }
+.glow-red { box-shadow: 0 0 20px rgba(251, 113, 133, 0.15); }
+.glow-blue { box-shadow: 0 0 20px rgba(96, 165, 250, 0.15); }
+.fade-in { animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.bar-animate { animation: barGrow 0.6s ease; }
+@keyframes barGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.modal-overlay { background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+</style>
+  <style>body { box-sizing: border-box; }</style>
+ </head>
+ <body class="h-full bg-[#0b0d14] text-gray-200 font-sans overflow-auto">
+  <div id="app" class="h-full w-full flex flex-col md:flex-row">
+   <!-- Sidebar Desktop -->
+   <aside id="sidebar" class="hidden md:flex flex-col w-56 bg-[#0f1117] border-r border-[#1a1d2a] p-4 flex-shrink-0" style="height:100%">
+    <div class="mb-6">
+     <h1 id="sidebar-title" class="text-lg font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Finanças Pro</h1>
+     <p class="text-[10px] text-gray-500 mt-1 font-mono tracking-wider uppercase">Controle Pessoal</p>
+    </div>
+    <nav class="flex-1 space-y-1">
+     <button onclick="setView('dashboard')" class="sidebar-btn w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-[#1a1d2a] transition" data-view="dashboard"> <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard </button> <button onclick="setView('lancamentos')" class="sidebar-btn w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-[#1a1d2a] transition" data-view="lancamentos"> <i data-lucide="list" class="w-4 h-4"></i> Lançamentos </button> <button onclick="setView('categorias')" class="sidebar-btn w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-[#1a1d2a] transition" data-view="categorias"> <i data-lucide="pie-chart" class="w-4 h-4"></i> Categorias </button>
+    </nav>
+    <div class="mt-4 border-t border-[#1a1d2a] pt-4 space-y-1">
+     <p class="text-[10px] text-gray-500 font-mono uppercase tracking-wider mb-2">Dados</p><button onclick="exportData()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs hover:bg-[#1a1d2a] transition text-gray-400"> <i data-lucide="download" class="w-3 h-3"></i> Exportar JSON </button> <button onclick="document.getElementById('importInput').click()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs hover:bg-[#1a1d2a] transition text-gray-400"> <i data-lucide="upload" class="w-3 h-3"></i> Importar JSON </button> <input type="file" id="importInput" accept=".json" class="hidden" onchange="importData(event)"> <button onclick="showClearConfirm()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs hover:bg-[#1a1d2a] transition text-red-400/70"> <i data-lucide="trash-2" class="w-3 h-3"></i> Limpar Tudo </button>
+    </div>
+   </aside><!-- Main Content -->
+   <main class="flex-1 overflow-auto" style="height:100%">
+    <!-- Top Bar Desktop -->
+    <header class="hidden md:flex items-center justify-between px-6 py-4 border-b border-[#1a1d2a] bg-[#0f1117]/80">
+     <div class="flex items-center gap-3">
+      <div id="filter-bar" class="flex items-center gap-2">
+       <select id="filterYear" onchange="applyFilter()" class="bg-[#1a1d2a] border border-[#2a2d3a] text-sm rounded-lg px-3 py-1.5 text-gray-300 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"></select> <select id="filterMonth" onchange="applyFilter()" class="bg-[#1a1d2a] border border-[#2a2d3a] text-sm rounded-lg px-3 py-1.5 text-gray-300 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"></select>
+      </div>
+     </div>
+     <div class="flex items-center gap-2">
+      <button onclick="openModal('receita')" class="flex items-center justify-center gap-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-500/30 transition"> <i data-lucide="plus" class="w-4 h-4"></i> Receita </button> <button onclick="openModal('despesa')" class="flex items-center justify-center gap-1.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-1.5 rounded-lg text-sm hover:bg-rose-500/30 transition"> <i data-lucide="minus" class="w-4 h-4"></i> Despesa </button>
+     </div>
+    </header><!-- Mobile Header -->
+    <header class="md:hidden flex items-center justify-between px-4 py-3 bg-[#0f1117] border-b border-[#1a1d2a]">
+     <h1 id="mobile-title" class="text-base font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Finanças Pro</h1>
+     <div class="flex items-center gap-2">
+      <select id="filterMonthMobile" onchange="syncMobileFilter()" class="bg-[#1a1d2a] border border-[#2a2d3a] text-xs rounded-lg px-2 py-1 text-gray-300"></select> <button onclick="showMobileMenu()" class="p-1.5 rounded-lg bg-[#1a1d2a]"><i data-lucide="menu" class="w-4 h-4"></i></button>
+     </div>
+    </header><!-- Desktop Content -->
+    <div id="desktop-content" class="hidden md:block p-6 space-y-6">
+     <!-- Cards -->
+     <div id="summary-cards" class="grid grid-cols-3 gap-4"></div><!-- Warning -->
+     <div id="deficit-warning" class="hidden bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-3 flex items-center gap-2 text-rose-400 text-sm fade-in">
+      <i data-lucide="alert-triangle" class="w-4 h-4"></i> <span>Suas despesas estão maiores que suas receitas neste mês!</span>
+     </div><!-- Dashboard View -->
+     <div id="view-dashboard" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+       <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-4">Receitas vs Despesas (Anual)</h3>
+        <div id="chart-comparison" class="h-48"></div>
+       </div>
+       <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-4">Despesas por Categoria</h3>
+        <div id="chart-categories" class="h-48 flex items-end gap-1"></div>
+       </div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+       <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-3">Maiores Gastos do Mês</h3>
+        <div id="top-expenses" class="space-y-2"></div>
+       </div>
+       <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-3">Lançamentos Recentes</h3>
+        <div id="recent-entries" class="space-y-2"></div>
+       </div>
+      </div>
+     </div><!-- Lancamentos View -->
+     <div id="view-lancamentos" class="hidden space-y-4">
+      <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-5">
+       <h3 class="text-sm font-medium text-gray-400 mb-3">Todos os Lançamentos</h3>
+       <div id="all-entries" class="space-y-2"></div>
+       <p id="no-entries" class="hidden text-center text-gray-500 py-8 text-sm">Nenhum lançamento encontrado.</p>
+      </div>
+     </div><!-- Categorias View -->
+     <div id="view-categorias" class="hidden space-y-4">
+      <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-5">
+       <h3 class="text-sm font-medium text-gray-400 mb-3">Resumo Anual por Categoria</h3>
+       <div id="annual-categories" class="space-y-2"></div>
+      </div>
+     </div>
+    </div><!-- Mobile Content -->
+    <div id="mobile-content" class="md:hidden p-4 space-y-4 pb-24">
+     <div id="mobile-cards" class="space-y-3"></div>
+     <div id="mobile-deficit" class="hidden bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2 flex items-center gap-2 text-rose-400 text-xs">
+      <i data-lucide="alert-triangle" class="w-3 h-3"></i><span>Despesas maiores que receitas!</span>
+     </div>
+     <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-3">
+      <h3 class="text-xs font-medium text-gray-400 mb-3">Comparativo Mensal</h3>
+      <div id="mobile-chart-comparison" class="h-32"></div>
+     </div>
+     <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-3">
+      <h3 class="text-xs font-medium text-gray-400 mb-3">Despesas por Categoria</h3>
+      <div id="mobile-chart-categories" class="h-24 flex items-end gap-0.5"></div>
+     </div>
+     <div>
+      <h3 class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Recentes</h3>
+      <div id="mobile-recent" class="space-y-2"></div>
+     </div>
+    </div><!-- Mobile Bottom Buttons -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 bg-[#0f1117] border-t border-[#1a1d2a] p-3 flex gap-2 z-40">
+     <button onclick="openModal('receita')" class="flex-1 flex items-center justify-center gap-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 py-2.5 rounded-xl text-sm font-medium"> <i data-lucide="plus" class="w-4 h-4"></i> Receita </button> <button onclick="openModal('despesa')" class="flex-1 flex items-center justify-center gap-1.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 py-2.5 rounded-xl text-sm font-medium"> <i data-lucide="minus" class="w-4 h-4"></i> Despesa </button>
+    </div>
+   </main>
+  </div><!-- Modal -->
+  <div id="modal-overlay" class="hidden fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4">
+   <div class="bg-[#12141d] border border-[#1a1d2a] rounded-2xl w-full max-w-md p-6 fade-in max-h-[90%] overflow-auto">
+    <div class="flex items-center justify-between mb-4">
+     <h2 id="modal-title" class="text-lg font-semibold"></h2><button onclick="closeModal()" class="p-1 rounded-lg hover:bg-[#1a1d2a]"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <form id="entry-form" class="space-y-3" onsubmit="return false;">
+     <input type="hidden" id="form-id"> <input type="hidden" id="form-tipo">
+     <div>
+      <label for="form-descricao" class="text-xs text-gray-400 block mb-1">Descrição</label> <input id="form-descricao" required class="w-full bg-[#0b0d14] border border-[#2a2d3a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50">
+     </div>
+     <div class="grid grid-cols-2 gap-3">
+      <div>
+       <label for="form-valor" class="text-xs text-gray-400 block mb-1">Valor (R$)</label> <input id="form-valor" type="number" step="0.01" min="0.01" required class="w-full bg-[#0b0d14] border border-[#2a2d3a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50">
+      </div>
+      <div>
+       <label for="form-data" class="text-xs text-gray-400 block mb-1">Data</label> <input id="form-data" type="date" required class="w-full bg-[#0b0d14] border border-[#2a2d3a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50">
+      </div>
+     </div>
+     <div>
+      <label for="form-categoria" class="text-xs text-gray-400 block mb-1">Categoria</label> <select id="form-categoria" required class="w-full bg-[#0b0d14] border border-[#2a2d3a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50"> <option value="">Selecione...</option> <option>Moradia</option><option>Alimentação</option><option>Transporte</option> <option>Saúde</option><option>Lazer</option><option>Investimentos</option> <option>Salário</option><option>Contas</option><option>Assinaturas</option><option>Outros</option> </select>
+     </div>
+     <div>
+      <label for="form-obs" class="text-xs text-gray-400 block mb-1">Observações (opcional)</label> <textarea id="form-obs" rows="2" class="w-full bg-[#0b0d14] border border-[#2a2d3a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50"></textarea>
+     </div><button id="form-submit" type="submit" class="w-full py-2.5 rounded-xl text-sm font-medium transition"></button>
+    </form>
+   </div>
+  </div><!-- Mobile Menu -->
+  <div id="mobile-menu" class="hidden fixed inset-0 modal-overlay z-50 flex items-end md:hidden">
+   <div class="bg-[#12141d] border-t border-[#1a1d2a] rounded-t-2xl w-full p-4 fade-in space-y-2">
+    <div class="w-8 h-1 bg-[#2a2d3a] rounded-full mx-auto mb-3"></div><button onclick="exportData();closeMobileMenu()" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm hover:bg-[#1a1d2a] transition"> <i data-lucide="download" class="w-4 h-4"></i> Exportar JSON </button> <button onclick="document.getElementById('importInput').click();closeMobileMenu()" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm hover:bg-[#1a1d2a] transition"> <i data-lucide="upload" class="w-4 h-4"></i> Importar JSON </button> <button onclick="showClearConfirm();closeMobileMenu()" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-rose-400 hover:bg-[#1a1d2a] transition"> <i data-lucide="trash-2" class="w-4 h-4"></i> Limpar Todos os Dados </button> <button onclick="closeMobileMenu()" class="w-full py-2.5 rounded-xl bg-[#1a1d2a] text-sm text-center mt-2">Fechar</button>
+   </div>
+  </div><!-- Clear Confirm -->
+  <div id="clear-confirm" class="hidden fixed inset-0 modal-overlay z-[60] flex items-center justify-center p-4">
+   <div class="bg-[#12141d] border border-rose-500/30 rounded-2xl w-full max-w-sm p-6 fade-in text-center">
+    <div class="w-12 h-12 rounded-full bg-rose-500/20 flex items-center justify-center mx-auto mb-3">
+     <i data-lucide="alert-triangle" class="w-6 h-6 text-rose-400"></i>
+    </div>
+    <h3 class="text-lg font-semibold mb-2">Limpar todos os dados?</h3>
+    <p class="text-sm text-gray-400 mb-4">Esta ação não pode ser desfeita.</p>
+    <div class="flex gap-2">
+     <button onclick="closeClearConfirm()" class="flex-1 py-2 rounded-xl bg-[#1a1d2a] text-sm">Cancelar</button> <button id="confirm-clear-btn" onclick="clearAllData()" class="flex-1 py-2 rounded-xl bg-rose-500/30 text-rose-400 text-sm font-medium">Confirmar</button>
+    </div>
+   </div>
+  </div><!-- Toast -->
+  <div id="toast" class="hidden fixed top-4 right-4 z-[70] bg-[#1a1d2a] border border-[#2a2d3a] rounded-xl px-4 py-3 text-sm fade-in shadow-lg max-w-xs"></div><!-- Delete Confirm -->
+  <div id="delete-confirm" class="hidden fixed inset-0 modal-overlay z-[60] flex items-center justify-center p-4">
+   <div class="bg-[#12141d] border border-rose-500/30 rounded-2xl w-full max-w-sm p-6 fade-in text-center">
+    <h3 class="text-base font-semibold mb-2">Excluir lançamento?</h3>
+    <p class="text-sm text-gray-400 mb-4" id="delete-desc"></p>
+    <div class="flex gap-2">
+     <button onclick="closeDeleteConfirm()" class="flex-1 py-2 rounded-xl bg-[#1a1d2a] text-sm">Cancelar</button> <button id="confirm-delete-btn" onclick="confirmDelete()" class="flex-1 py-2 rounded-xl bg-rose-500/30 text-rose-400 text-sm font-medium">Excluir</button>
+    </div>
+   </div>
+  </div>
+  <script>
+// State
+let allData = [];
+let currentView = 'dashboard';
+let selectedYear = new Date().getFullYear();
+let selectedMonth = new Date().getMonth();
+let editingRecord = null;
+let deletingRecord = null;
+const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const CAT_COLORS = {
+  'Moradia':'#8b5cf6','Alimentação':'#f59e0b','Transporte':'#3b82f6','Saúde':'#ec4899',
+  'Lazer':'#10b981','Investimentos':'#06b6d4','Salário':'#22c55e','Contas':'#ef4444',
+  'Assinaturas':'#a855f7','Outros':'#6b7280'
+};
+
+const defaultConfig = {
+  app_title: 'Finanças Pro',
+  background_color: '#0b0d14',
+  surface_color: '#12141d',
+  text_color: '#e5e7eb',
+  primary_action_color: '#34d399',
+  secondary_action_color: '#fb7185',
+  font_family: 'DM Sans',
+  font_size: 14
+};
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBx4wacp43WYudlDXtOwz3aB6NoVyTNhQI",
+  authDomain: "financas-3d020.firebaseapp.com",
+  projectId: "financas-3d020",
+  storageBucket: "financas-3d020.firebasestorage.app",
+  messagingSenderId: "868381179240",
+  appId: "1:868381179240:web:be6bc904fb44757777aadd"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const entriesCollection = db.collection('lancamentos');
+
+function fmt(v) { return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function fmtDate(d) { const p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+
+function sanitizeEntry(data) {
+  return {
+    tipo: data.tipo === 'receita' ? 'receita' : 'despesa',
+    descricao: (data.descricao || '').trim(),
+    valor: Number(data.valor) || 0,
+    categoria: (data.categoria || 'Outros').trim() || 'Outros',
+    data: data.data || new Date().toISOString().split('T')[0],
+    observacoes: (data.observacoes || '').trim(),
+    createdAt: data.createdAt || new Date().toISOString()
+  };
+}
+
+async function createEntry(data) {
+  try {
+    await entriesCollection.add(sanitizeEntry(data));
+    return { isOk: true };
+  } catch (error) {
+    console.error('Erro ao criar lanÃ§amento no Firestore:', error);
+    return { isOk: false, error };
+  }
+}
+
+async function updateEntry(data) {
+  try {
+    const id = data.__backendId || data.id;
+    if (!id) throw new Error('ID do lanÃ§amento nÃ£o encontrado.');
+    await entriesCollection.doc(id).set(sanitizeEntry(data), { merge: true });
+    return { isOk: true };
+  } catch (error) {
+    console.error('Erro ao atualizar lanÃ§amento no Firestore:', error);
+    return { isOk: false, error };
+  }
+}
+
+async function deleteEntryFromDb(record) {
+  try {
+    const id = record && record.__backendId;
+    if (!id) throw new Error('ID do lanÃ§amento nÃ£o encontrado.');
+    await entriesCollection.doc(id).delete();
+    return { isOk: true };
+  } catch (error) {
+    console.error('Erro ao excluir lanÃ§amento no Firestore:', error);
+    return { isOk: false, error };
+  }
+}
+
+function subscribeEntries() {
+  return entriesCollection.onSnapshot(snapshot => {
+    allData = snapshot.docs.map(doc => ({ __backendId: doc.id, ...doc.data() }));
+    renderAll();
+  }, error => {
+    console.error('Erro ao sincronizar dados do Firestore:', error);
+    showToast('Erro ao sincronizar dados com o Firebase.', 'rose');
+  });
+}
+
+function getFiltered() {
+  return allData.filter(r => {
+    const d = new Date(r.data);
+    return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+  });
+}
+
+function getYearData() {
+  return allData.filter(r => new Date(r.data).getFullYear() === selectedYear);
+}
+
+// Filters
+function populateFilters() {
+  const years = new Set(allData.map(r => new Date(r.data).getFullYear()));
+  years.add(new Date().getFullYear());
+  const sortedYears = [...years].sort((a,b) => b-a);
+
+  const yS = document.getElementById('filterYear');
+  yS.innerHTML = sortedYears.map(y => `<option value="${y}" ${y===selectedYear?'selected':''}>${y}</option>`).join('');
+
+  const mS = document.getElementById('filterMonth');
+  mS.innerHTML = MONTHS.map((m,i) => `<option value="${i}" ${i===selectedMonth?'selected':''}>${m}</option>`).join('');
+
+  const mM = document.getElementById('filterMonthMobile');
+  mM.innerHTML = MONTHS.map((m,i) => `<option value="${selectedYear}-${i}" ${i===selectedMonth?'selected':''}>${m.substring(0,3)}</option>`).join('');
+}
+
+function applyFilter() {
+  selectedYear = parseInt(document.getElementById('filterYear').value);
+  selectedMonth = parseInt(document.getElementById('filterMonth').value);
+  renderAll();
+}
+
+function syncMobileFilter() {
+  const v = document.getElementById('filterMonthMobile').value.split('-');
+  selectedYear = parseInt(v[0]);
+  selectedMonth = parseInt(v[1]);
+  document.getElementById('filterYear').value = selectedYear;
+  document.getElementById('filterMonth').value = selectedMonth;
+  renderAll();
+}
+
+// Cards
+function renderCards() {
+  const filtered = getFiltered();
+  const receitas = filtered.filter(r=>r.tipo==='receita').reduce((s,r)=>s+r.valor,0);
+  const despesas = filtered.filter(r=>r.tipo==='despesa').reduce((s,r)=>s+r.valor,0);
+  const saldo = receitas - despesas;
+
+  const cards = [
+    {label:'Saldo do Mês',value:saldo,color:saldo>=0?'emerald':'rose',icon:'wallet',glow:saldo>=0?'glow-green':'glow-red'},
+    {label:'Receitas',value:receitas,color:'emerald',icon:'trending-up',glow:'glow-green'},
+    {label:'Despesas',value:despesas,color:'rose',icon:'trending-down',glow:'glow-red'}
+  ];
+
+  document.getElementById('summary-cards').innerHTML = cards.map(c => `
+    <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-4 ${c.glow} fade-in">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-gray-400">${c.label}</span>
+        <i data-lucide="${c.icon}" class="w-4 h-4 text-${c.color}-400"></i>
+      </div>
+      <p class="text-xl font-bold text-${c.color}-400 font-mono">${fmt(c.value)}</p>
+    </div>
+  `).join('');
+
+  // Mobile cards
+  document.getElementById('mobile-cards').innerHTML = cards.map(c => `
+    <div class="bg-[#12141d] border border-[#1a1d2a] rounded-xl p-3 ${c.glow}">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-[10px] text-gray-500 uppercase tracking-wider">${c.label}</span>
+          <p class="text-lg font-bold text-${c.color}-400 font-mono">${fmt(c.value)}</p>
+        </div>
+        <i data-lucide="${c.icon}" class="w-5 h-5 text-${c.color}-400 opacity-50"></i>
+      </div>
+    </div>
+  `).join('');
+
+  // Deficit warning
+  const show = despesas > receitas && (receitas > 0 || despesas > 0);
+  document.getElementById('deficit-warning').classList.toggle('hidden', !show);
+  document.getElementById('mobile-deficit').classList.toggle('hidden', !show);
+
+  lucide.createIcons();
+}
+
+// Charts
+function renderCharts() {
+  // Comparison chart
+  const yearData = getYearData();
+  const monthTotals = MONTHS.map((_,i) => {
+    const m = yearData.filter(r => new Date(r.data).getMonth() === i);
+    return {
+      rec: m.filter(r=>r.tipo==='receita').reduce((s,r)=>s+r.valor,0),
+      desp: m.filter(r=>r.tipo==='despesa').reduce((s,r)=>s+r.valor,0)
+    };
+  });
+  const maxVal = Math.max(1, ...monthTotals.map(m => Math.max(m.rec, m.desp)));
+
+  const compHTML = `
+    <div class="flex items-end justify-between h-full gap-1">
+      ${monthTotals.map((m,i) => `
+        <div class="flex-1 flex flex-col items-center gap-0.5 h-full justify-end">
+          <div class="w-full flex gap-0.5 items-end flex-1">
+            <div class="flex-1 bg-emerald-500/60 rounded-t bar-animate" style="height:${Math.max(2,m.rec/maxVal*100)}%;transform-origin:bottom"></div>
+            <div class="flex-1 bg-rose-500/60 rounded-t bar-animate" style="height:${Math.max(2,m.desp/maxVal*100)}%;transform-origin:bottom"></div>
+          </div>
+          <span class="text-[9px] text-gray-500 ${i===selectedMonth?'text-white font-bold':''}">${MONTHS[i].substring(0,3)}</span>
+        </div>
+      `).join('')}
+    </div>
+    <div class="flex gap-4 mt-2 justify-center">
+      <span class="flex items-center gap-1 text-[10px] text-gray-400"><span class="w-2 h-2 rounded-full bg-emerald-500/60 inline-block"></span>Receitas</span>
+      <span class="flex items-center gap-1 text-[10px] text-gray-400"><span class="w-2 h-2 rounded-full bg-rose-500/60 inline-block"></span>Despesas</span>
+    </div>
+  `;
+
+  document.getElementById('chart-comparison').innerHTML = compHTML;
+  document.getElementById('mobile-chart-comparison').innerHTML = compHTML;
+
+  // Category chart
+  const filtered = getFiltered();
+  const catTotals = {};
+  filtered.filter(r=>r.tipo==='despesa').forEach(r => {
+    catTotals[r.categoria] = (catTotals[r.categoria]||0) + r.valor;
+  });
+  const catEntries = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
+  const catMax = Math.max(1, ...catEntries.map(e=>e[1]));
+
+  let catHTML;
+  if (catEntries.length === 0) {
+    catHTML = '<p class="text-gray-500 text-sm m-auto">Sem despesas neste mês</p>';
+  } else {
+    catHTML = catEntries.map(([cat,val]) => `
+      <div class="flex-1 flex flex-col items-center justify-end h-full min-w-0">
+        <div class="w-full rounded-t bar-animate" style="height:${Math.max(4,val/catMax*85)}%;background:${CAT_COLORS[cat]||'#6b7280'};transform-origin:bottom;opacity:0.7"></div>
+        <span class="text-[8px] text-gray-500 mt-1 truncate w-full text-center">${cat.substring(0,5)}</span>
+        <span class="text-[9px] font-mono text-gray-400">${fmt(val)}</span>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('chart-categories').innerHTML = catHTML;
+  document.getElementById('mobile-chart-categories').innerHTML = catHTML;
+}
+
+// Lists
+function renderLists() {
+  const filtered = getFiltered().sort((a,b) => new Date(b.data)-new Date(a.data));
+
+  // Top expenses
+  const topExp = filtered.filter(r=>r.tipo==='despesa').sort((a,b)=>b.valor-a.valor).slice(0,5);
+  document.getElementById('top-expenses').innerHTML = topExp.length ? topExp.map(r => entryRow(r, true)).join('') : '<p class="text-gray-500 text-sm py-4 text-center">Sem gastos</p>';
+
+  // Recent
+  const recent = filtered.slice(0,6);
+  document.getElementById('recent-entries').innerHTML = recent.length ? recent.map(r => entryRow(r, true)).join('') : '<p class="text-gray-500 text-sm py-4 text-center">Sem lançamentos</p>';
+
+  // Mobile recent
+  const mobileRecent = filtered.slice(0,8);
+  document.getElementById('mobile-recent').innerHTML = mobileRecent.length ? mobileRecent.map(r => entryRow(r, false)).join('') : '<p class="text-gray-500 text-xs py-4 text-center">Sem lançamentos</p>';
+
+  // All entries
+  const allEl = document.getElementById('all-entries');
+  const noEl = document.getElementById('no-entries');
+  if (filtered.length) {
+    allEl.innerHTML = filtered.map(r => entryRow(r, true, true)).join('');
+    noEl.classList.add('hidden');
+  } else {
+    allEl.innerHTML = '';
+    noEl.classList.remove('hidden');
+  }
+
+  lucide.createIcons();
+}
+
+function entryRow(r, showActions, full) {
+  const isRec = r.tipo === 'receita';
+  const color = isRec ? 'emerald' : 'rose';
+  const sign = isRec ? '+' : '-';
+  return `
+    <div class="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-[#1a1d2a]/50 transition group">
+      <div class="flex items-center gap-2 min-w-0 flex-1">
+        <div class="w-2 h-2 rounded-full bg-${color}-400 flex-shrink-0"></div>
+        <div class="min-w-0">
+          <p class="text-sm truncate">${r.descricao}</p>
+          <p class="text-[10px] text-gray-500">${r.categoria} · ${fmtDate(r.data)}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <span class="text-sm font-mono text-${color}-400">${sign}${fmt(r.valor)}</span>
+        ${showActions ? `
+          <button onclick="editEntry('${r.__backendId}')" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#2a2d3a] transition"><i data-lucide="edit-2" class="w-3 h-3 text-gray-400"></i></button>
+          <button onclick="deleteEntry('${r.__backendId}')" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#2a2d3a] transition"><i data-lucide="trash-2" class="w-3 h-3 text-rose-400"></i></button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// Annual categories
+function renderAnnualCategories() {
+  const yearData = getYearData();
+  const catTotals = {};
+  yearData.forEach(r => {
+    const key = `${r.tipo}:${r.categoria}`;
+    catTotals[key] = (catTotals[key]||0) + r.valor;
+  });
+  const entries = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
+  document.getElementById('annual-categories').innerHTML = entries.length ? entries.map(([key,val]) => {
+    const [tipo, cat] = key.split(':');
+    const isRec = tipo==='receita';
+    return `<div class="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-[#1a1d2a]/50">
+      <div class="flex items-center gap-2">
+        <div class="w-3 h-3 rounded" style="background:${CAT_COLORS[cat]||'#6b7280'}"></div>
+        <span class="text-sm">${cat}</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded-full ${isRec?'bg-emerald-500/20 text-emerald-400':'bg-rose-500/20 text-rose-400'}">${tipo}</span>
+      </div>
+      <span class="font-mono text-sm">${fmt(val)}</span>
+    </div>`;
+  }).join('') : '<p class="text-gray-500 text-sm py-4 text-center">Sem dados no ano</p>';
+}
+
+function renderAll() {
+  populateFilters();
+  renderCards();
+  renderCharts();
+  renderLists();
+  renderAnnualCategories();
+}
+
+// Views
+function setView(v) {
+  currentView = v;
+  document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
+  document.getElementById('view-'+v).classList.remove('hidden');
+  document.querySelectorAll('.sidebar-btn').forEach(b => {
+    b.classList.toggle('bg-[#1a1d2a]', b.dataset.view === v);
+    b.classList.toggle('text-white', b.dataset.view === v);
+  });
+}
+
+// Modal
+function openModal(tipo, record) {
+  editingRecord = record || null;
+  document.getElementById('form-tipo').value = tipo;
+  document.getElementById('form-id').value = '';
+  document.getElementById('form-descricao').value = record ? record.descricao : '';
+  document.getElementById('form-valor').value = record ? record.valor : '';
+  document.getElementById('form-data').value = record ? record.data : new Date().toISOString().split('T')[0];
+  document.getElementById('form-categoria').value = record ? record.categoria : '';
+  document.getElementById('form-obs').value = record ? (record.observacoes||'') : '';
+
+  const isRec = tipo === 'receita';
+  document.getElementById('modal-title').textContent = record ? 'Editar Lançamento' : (isRec ? 'Nova Receita' : 'Nova Despesa');
+  const btn = document.getElementById('form-submit');
+  btn.textContent = record ? 'Salvar Alterações' : (isRec ? 'Adicionar Receita' : 'Adicionar Despesa');
+  btn.className = `w-full py-2.5 rounded-xl text-sm font-medium transition ${isRec ? 'bg-emerald-500/30 text-emerald-400 hover:bg-emerald-500/40' : 'bg-rose-500/30 text-rose-400 hover:bg-rose-500/40'}`;
+
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  editingRecord = null;
+}
+
+// Form submit
+document.getElementById('entry-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('form-submit');
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+
+  const data = {
+    tipo: document.getElementById('form-tipo').value,
+    descricao: document.getElementById('form-descricao').value.trim(),
+    valor: parseFloat(document.getElementById('form-valor').value),
+    categoria: document.getElementById('form-categoria').value,
+    data: document.getElementById('form-data').value,
+    observacoes: document.getElementById('form-obs').value.trim(),
+    createdAt: editingRecord ? editingRecord.createdAt : new Date().toISOString()
+  };
+
+  let result;
+  if (editingRecord) {
+    const updated = { ...editingRecord, ...data };
+    result = await updateEntry(updated);
+  } else {
+    if (allData.length >= 999) {
+      showToast('Limite de 999 lançamentos atingido!', 'rose');
+      btn.disabled = false;
+      btn.textContent = 'Salvar';
+      return;
+    }
+    result = await createEntry(data);
+  }
+
+  btn.disabled = false;
+  if (result.isOk) {
+    showToast(editingRecord ? 'Lançamento atualizado!' : 'Lançamento adicionado!', 'emerald');
+    closeModal();
+  } else {
+    showToast('Erro ao salvar. Tente novamente.', 'rose');
+    btn.textContent = 'Salvar';
+  }
+});
+
+function editEntry(id) {
+  const r = allData.find(d => d.__backendId === id);
+  if (r) openModal(r.tipo, r);
+}
+
+function deleteEntry(id) {
+  deletingRecord = allData.find(d => d.__backendId === id);
+  if (!deletingRecord) return;
+  document.getElementById('delete-desc').textContent = `"${deletingRecord.descricao}" - ${fmt(deletingRecord.valor)}`;
+  document.getElementById('delete-confirm').classList.remove('hidden');
+  lucide.createIcons();
+}
+
+async function confirmDelete() {
+  if (!deletingRecord) return;
+  const btn = document.getElementById('confirm-delete-btn');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo...';
+  const result = await deleteEntryFromDb(deletingRecord);
+  btn.disabled = false;
+  btn.textContent = 'Excluir';
+  document.getElementById('delete-confirm').classList.add('hidden');
+  if (result.isOk) {
+    showToast('Lançamento excluído!', 'emerald');
+  } else {
+    showToast('Erro ao excluir.', 'rose');
+  }
+  deletingRecord = null;
+}
+
+function closeDeleteConfirm() {
+  document.getElementById('delete-confirm').classList.add('hidden');
+  deletingRecord = null;
+}
+
+// Export/Import
+function exportData() {
+  const blob = new Blob([JSON.stringify(allData.map(r => ({
+    tipo:r.tipo, descricao:r.descricao, valor:r.valor, categoria:r.categoria,
+    data:r.data, observacoes:r.observacoes, createdAt:r.createdAt
+  })), null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `financas-pro-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  showToast('Dados exportados!', 'emerald');
+}
+
+async function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const items = JSON.parse(text);
+    if (!Array.isArray(items)) throw new Error();
+    let count = 0;
+    for (const item of items) {
+      if (allData.length + count >= 999) break;
+      await createEntry({
+        tipo: item.tipo || 'despesa',
+        descricao: item.descricao || 'Importado',
+        valor: parseFloat(item.valor) || 0,
+        categoria: item.categoria || 'Outros',
+        data: item.data || new Date().toISOString().split('T')[0],
+        observacoes: item.observacoes || '',
+        createdAt: item.createdAt || new Date().toISOString()
+      });
+      count++;
+    }
+    showToast(`${count} lançamentos importados!`, 'emerald');
+  } catch { showToast('Erro ao importar arquivo.', 'rose'); }
+  e.target.value = '';
+}
+
+function showClearConfirm() { document.getElementById('clear-confirm').classList.remove('hidden'); lucide.createIcons(); }
+function closeClearConfirm() { document.getElementById('clear-confirm').classList.add('hidden'); }
+
+async function clearAllData() {
+  const btn = document.getElementById('confirm-clear-btn');
+  btn.disabled = true;
+  btn.textContent = 'Limpando...';
+  for (const r of [...allData]) {
+    await deleteEntryFromDb(r);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Confirmar';
+  closeClearConfirm();
+  showToast('Todos os dados foram removidos!', 'emerald');
+}
+
+function showToast(msg, color='emerald') {
+  const t = document.getElementById('toast');
+  t.innerHTML = `<span class="text-${color}-400">${msg}</span>`;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 3000);
+}
+
+function showMobileMenu() { document.getElementById('mobile-menu').classList.remove('hidden'); lucide.createIcons(); }
+function closeMobileMenu() { document.getElementById('mobile-menu').classList.add('hidden'); }
+
+// Element SDK
+window.elementSdk.init({
+  defaultConfig,
+  onConfigChange: async (config) => {
+    const title = config.app_title || defaultConfig.app_title;
+    const el1 = document.getElementById('sidebar-title');
+    const el2 = document.getElementById('mobile-title');
+    if (el1) el1.textContent = title;
+    if (el2) el2.textContent = title;
+
+    const bg = config.background_color || defaultConfig.background_color;
+    const surface = config.surface_color || defaultConfig.surface_color;
+    const textC = config.text_color || defaultConfig.text_color;
+    document.body.style.backgroundColor = bg;
+    document.body.style.color = textC;
+
+    const font = config.font_family || defaultConfig.font_family;
+    document.body.style.fontFamily = `${font}, DM Sans, sans-serif`;
+
+    const baseSize = config.font_size || defaultConfig.font_size;
+    document.body.style.fontSize = baseSize + 'px';
+  },
+  mapToCapabilities: (config) => ({
+    recolorables: [
+      { get: () => config.background_color || defaultConfig.background_color, set: v => { config.background_color = v; window.elementSdk.setConfig({background_color:v}); }},
+      { get: () => config.surface_color || defaultConfig.surface_color, set: v => { config.surface_color = v; window.elementSdk.setConfig({surface_color:v}); }},
+      { get: () => config.text_color || defaultConfig.text_color, set: v => { config.text_color = v; window.elementSdk.setConfig({text_color:v}); }},
+      { get: () => config.primary_action_color || defaultConfig.primary_action_color, set: v => { config.primary_action_color = v; window.elementSdk.setConfig({primary_action_color:v}); }},
+      { get: () => config.secondary_action_color || defaultConfig.secondary_action_color, set: v => { config.secondary_action_color = v; window.elementSdk.setConfig({secondary_action_color:v}); }}
+    ],
+    borderables: [],
+    fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: v => { config.font_family = v; window.elementSdk.setConfig({font_family:v}); }},
+    fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: v => { config.font_size = v; window.elementSdk.setConfig({font_size:v}); }}
+  }),
+  mapToEditPanelValues: (config) => new Map([
+    ['app_title', config.app_title || defaultConfig.app_title]
+  ])
+});
+
+(async () => {
+  subscribeEntries();
+})();
+
+lucide.createIcons();
+</script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e95534891e0bd9e',t:'MTc3NTY5MzgxMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
