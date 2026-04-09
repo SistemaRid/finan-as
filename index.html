@@ -3,7 +3,17 @@
  <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Finanças Pro</title>
+  <meta name="application-name" content="Finanças">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Finanças">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0b0d14">
+  <meta name="description" content="Controle simples de receitas e despesas no celular e no desktop.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>Finanças</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
   <script src="/_sdk/element_sdk.js"></script>
@@ -206,7 +216,7 @@ const CAT_COLORS = {
 };
 
 const defaultConfig = {
-  app_title: 'Finanças Pro',
+  app_title: 'Finanças',
   background_color: '#0b0d14',
   surface_color: '#12141d',
   text_color: '#e5e7eb',
@@ -739,6 +749,14 @@ window.elementSdk.init({
 (async () => {
   subscribeEntries();
 })();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(error => {
+      console.error('Erro ao registrar service worker:', error);
+    });
+  });
+}
 
 lucide.createIcons();
 </script>
